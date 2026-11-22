@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="用于发现、阅读和串联劳动关系研究证据的本地知识库。">
+  <title>劳动关系知识库</title>
+  <link rel="stylesheet" href="./style.css">
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <aside class="rail">
+    <div class="identity">
+      <span class="brandicon" aria-hidden="true">研</span>
+      <div><strong>劳动关系知识库</strong><span>个人研究工作台</span></div>
+    </div>
+    <nav aria-label="工作区">
+      <button class="nav active" data-view="library"><span class="icon" data-icon="library"></span>文献库</button>
+      <button class="nav" data-view="discover"><span class="icon" data-icon="search"></span>双语发现</button>
+      <button class="nav" data-view="inbox"><span class="icon" data-icon="inbox"></span>订阅与收件箱 <span class="count" id="inboxCount" hidden></span></button>
+      <button class="nav" data-view="ask"><span class="icon" data-icon="ask"></span>证据问答</button>
+      <button class="nav" data-view="map"><span class="icon" data-icon="map"></span>知识地图</button>
+    </nav>
+    <div class="railbottom"><span class="dot"></span> <span id="workspaceName">浏览器工作区</span> <span id="engineBadge"></span></div>
+  </aside>
+  <main>
+    <div id="view"></div>
+  </main>
+  <dialog id="detail"><div id="detailContent"></div></dialog>
+  <dialog id="edit"><div id="editContent"></div></dialog>
+  <dialog id="reader"><div id="readerContent"></div></dialog>
+  <div id="toast" role="status" hidden></div>
+</body>
+</html>

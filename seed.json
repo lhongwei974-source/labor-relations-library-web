@@ -1,0 +1,70 @@
+{
+  "documents": [
+    {
+      "title":"新就业形态劳动者休息和劳动报酬权益保障指引",
+      "authors":"人力资源社会保障部办公厅",
+      "year":"2023",
+      "kind":"政策",
+      "lang":"中文",
+      "url":"https://chinajob.mohrss.gov.cn/c/2024-03-25/397989.shtml",
+      "basis":"政策原文（分条摘述）。通知落款 2023 年，页面刊发于 2024 年。",
+      "tags":"平台用工,劳动报酬与工时,集体协商与权益救济",
+      "note":"适合作为中国平台用工权益规则的政策节点。结合劳动关系认定与具体适用对象阅读。页面同时刊载劳动规则公示指引、权益维护服务指南。",
+      "segments":[["第四条","指引将接单时间和适当考虑的宽放时间共同纳入每日工作时间。企业明确要求的在线时间或在指定地点接受常规管理的时间也计入工作时间。宽放时间由企业与工会或劳动者代表结合行业实际协商确定。"],["第五至六条","连续最长接单时间和每日最长工作时间由企业与工会或劳动者代表平等协商确定。达到上限时，系统应提示休息并在一定时间内停止推送订单。企业建立工时和接单时间台账，劳动者可通过应用查询本人记录。"],["第七至九条","报酬规则包括劳动定额、抽成、计件单价和支付周期等。对未完全符合确立劳动关系情形且接受企业劳动管理的相关劳动者，指引规定适用其实际工作地的小时最低工资标准。法定节假日工作应获得高于正常工作时间报酬的合理报酬。"]]
+    },
+    {
+      "title":"“数字控制”下的劳动秩序——外卖骑手的劳动控制研究",
+      "authors":"陈龙",
+      "year":"2020",
+      "kind":"论文",
+      "lang":"中文",
+      "url":"https://sociologyol.ruc.edu.cn/shxyj/fzshx/jjshx/7da504cc704649719f1f9dfe49ed801f.htm",
+      "basis":"转载页，样例摘述",
+      "tags":"平台用工,算法管理",
+      "note":"围绕劳动过程理论阅读。可与中国及其他地区平台对劳动过程的控制机制做比较。",
+      "segments":[["转载页","研究考察外卖骑手劳动过程中的数字控制，讨论企业如何借助数字技术把劳动控制延伸至流通领域，并据此反思劳动过程理论面对数字经济所需的调整。"]]
+    },
+    {
+      "title":"The role of digital labour platforms in transforming the world of work",
+      "authors":"International Labour Organization",
+      "year":"2021",
+      "kind":"报告",
+      "lang":"English",
+      "url":"https://www.ilo.org/publications/flagship-reports/role-digital-labour-platforms-transforming-world-work",
+      "basis":"报告发布页，样例摘述",
+      "tags":"平台用工,劳动权益保障,社会保险与职业伤害",
+      "note":"作为跨国研究入口，区分线上远程任务平台与基于地理位置的平台。用报告正式版本核对各国规则与统计口径。",
+      "segments":[["报告发布页","The ILO draws on surveys and interviews with around 12,000 workers and representatives of 85 businesses. It examines working conditions and business models on online web-based and location-based labour platforms, as well as regulatory responses across countries."]]
+    },
+    {
+      "title":"What Do Platforms Do? Understanding the Gig Economy",
+      "authors":"Steven Vallas; Juliet B. Schor",
+      "year":"2020",
+      "kind":"论文",
+      "lang":"English",
+      "doi":"10.1146/annurev-soc-121919-054857",
+      "url":"https://www.annualreviews.org/content/journals/10.1146/annurev-soc-121919-054857",
+      "basis":"期刊摘要，样例摘述",
+      "tags":"灵活就业,平台用工,算法管理",
+      "note":"综述。读这篇时可把平台视为市场中介与劳动控制相关的组织形态，进一步比较不同研究赋予平台的角色。",
+      "segments":[["期刊摘要","Vallas and Schor review sociological perspectives on how digital platforms organize gig work. They consider recurring metaphors in the literature and discuss how platforms allocate power among actors while organizing economic activity."]]
+    },
+    {
+      "title":"Uberland: How Algorithms Are Rewriting the Rules of Work",
+      "authors":"Alex Rosenblat",
+      "year":"2018",
+      "kind":"著作",
+      "lang":"English",
+      "url":"https://www.ucpress.edu/book/9780520298576/uberland",
+      "basis":"出版社书介，样例摘述",
+      "tags":"平台用工,算法管理",
+      "note":"可将网约车司机与外卖骑手的经验联系起来。引用具体章节前，需获取并核对著作原文。",
+      "segments":[["出版社书介","Rosenblat's book draws on fieldwork with Uber drivers and analysis of drivers' online forums to study how Uber's technology shapes workers' experience of their jobs."]]
+    }
+  ],
+  "links":[
+    [2,5,"比较案例","比较外卖配送和网约车两种劳动过程，重点追踪平台如何通过信息和规则组织日常劳动。"],
+    [4,2,"补充证据","综述提供平台组织的概念框架，外卖骑手研究提供中国语境下的案例。"],
+    [3,1,"比较案例","跨国报告与中国政策从不同层面讨论劳动条件和权益保障，可沿工时和劳动报酬建立对照。"]
+  ]
+}

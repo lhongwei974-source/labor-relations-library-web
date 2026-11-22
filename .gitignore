@@ -1,0 +1,7 @@
+*.sqlite*
+*.gguf
+*.backup.json
+data/
+runtime/
+*.pdf
+!/practice.pdf

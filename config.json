@@ -1,0 +1,16 @@
+{
+  "port": 8765,
+  "ollamaModel": "qwen2.5:3b",
+  "ollamaPort": 11434,
+  "llamaPort": 8766,
+  "topics": [
+    {"name":"灵活就业","zh":"灵活就业 新就业形态","en":"non-standard employment gig work","terms":["非标准就业","零工经济","gig economy","gig work","non-standard employment","flexible employment"]},
+    {"name":"平台用工","zh":"平台用工 外卖骑手","en":"platform work food delivery","terms":["新就业形态","平台劳动","外卖骑手","网约车","platform economy","platform work","platform labour","platform labor","gig workers","digital labour platforms"]},
+    {"name":"劳动关系认定","zh":"平台用工 劳动关系认定","en":"platform worker employment status","terms":["从属性","用工关系","雇佣关系","employment relationship","worker classification"]},
+    {"name":"劳动报酬与工时","zh":"外卖骑手 劳动报酬 工时","en":"platform work pay working time","terms":["最低工资","接单时间","休息权","劳动报酬","工时","计件","minimum wage","working hours","working time"]},
+    {"name":"算法管理","zh":"外卖骑手 算法管理","en":"algorithmic management platform workers","terms":["算法控制","数字控制","派单","劳动控制","algorithmic control","algorithmic management","labour process"]},
+    {"name":"社会保险与职业伤害","zh":"新就业形态 职业伤害保障","en":"platform workers social protection occupational injury","terms":["社会保险","职业伤害","工伤","social protection","occupational injury","workers compensation"]},
+    {"name":"集体协商与权益救济","zh":"平台劳动 集体协商 劳动争议","en":"platform labour collective bargaining dispute resolution","terms":["工会","集体协商","劳动争议","申诉","collective bargaining","worker voice","dispute resolution"]},
+    {"name":"劳动权益保障","zh":"新就业形态 劳动权益保障","en":"platform workers labour rights decent work","terms":["权益保障","体面劳动","labor rights","labour rights","decent work"]}
+  ]
+}
