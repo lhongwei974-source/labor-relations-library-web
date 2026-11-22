@@ -1,16 +1,18 @@
-import {api,checkWatches,entryMarkdown,getPdf,exportBackup,restoreBackup} from './browser-api.mjs';
+import {api,checkWatches,entryMarkdown,getPdf,exportBackup,restoreBackup} from './browser-api.mjs?v=research-1';
+import {designSummary,mountComparison,mountDesignEditor} from './research-ui.mjs';
 
 const asset=path=>new URL(path,import.meta.url).href;
 
 const $ = (sel, parent=document) => parent.querySelector(sel);
 const $$ = (sel, parent=document) => [...parent.querySelectorAll(sel)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, x => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x]));
-const detail = $('#detail'), edit = $('#edit'), reader = $('#reader'), view = $('#view');
+const detail = $('#detail'), edit = $('#edit'), reader = $('#reader'), research = $('#research'), view = $('#view');
 const state = { view:'library', docs:[], topics:[], engine:'', q:'', kind:'', tag:'', zone:'', primaryOnly:false, discovery:null, terms:{zh:'',en:'',kind:''}, answer:null, question:'' };
 const kinds = ['论文','政策','报告','著作','新闻','网页','练习'];
 const linkTypes = ['比较案例','补充证据','观点分歧','理论与案例','政策回应'];
 const symbols = {
   library:'<path d="M4 5h4v14H4zM10 5h4v14h-4zM16 6l3.3-.8L23 18l-3.3.9z"/>',
+  studies:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M3 14.5h18M9 5v14m6-14v14"/>',
   search:'<circle cx="10.5" cy="10.5" r="6.1"/><path d="m15 15 5 5"/>',
   inbox:'<path d="M4 7h16l2 7v5H2v-5zM2 14h6l2 2h4l2-2h6"/>',
   ask:'<path d="M20 17H9l-5 3V5h16zM8 9h8M8 13h5"/>',
@@ -76,13 +78,37 @@ function updateEngine(status) {
 }
 function go(name) {
   state.view=name;
+  if(name==='studies'&&location.hash!=='#research-designs')history.replaceState(null,'','#research-designs');
+  if(name!=='studies'&&location.hash==='#research-designs')history.replaceState(null,'',location.pathname+location.search);
   $$('.nav').forEach(btn=>{
     const active=btn.dataset.view===name;
     btn.classList.toggle('active',active);
     if(active) btn.setAttribute('aria-current','page'); else btn.removeAttribute('aria-current');
   });
-  const handler=({library:showLibrary,discover:showDiscovery,inbox:showInbox,ask:showAsk,map:showMap})[name];
+  const handler=({library:showLibrary,studies:showStudies,discover:showDiscovery,inbox:showInbox,ask:showAsk,map:showMap})[name];
   if (handler) Promise.resolve(handler()).catch(e=>toast(e.message,true));
+}
+async function showStudies(){
+  const index=await api('/api/designs');
+  if(state.view!=='studies')return;
+  mountComparison(view,index,{open:id=>openStudy(id).catch(e=>toast(e.message,true)),download});
+}
+async function openStudy(id){
+  const d=await api(`/api/docs/${id}`);
+  mountDesignEditor(research,d,{
+    notify:toast,
+    extract:async()=>{
+      await api(`/api/docs/${id}/analyze`,{});
+      return (await api(`/api/docs/${id}`)).designCandidate;
+    },
+    save:async designs=>{
+      const updated=await api(`/api/docs/${id}/designs`,{designs,revision:d.designRevision});
+      for(const target of $$('[data-study-summary="'+id+'"]')){
+        target.innerHTML=designSummary({...d,designs:updated.designs});
+      }
+      if(state.view==='studies')await showStudies();
+    }
+  });
 }
 let searchGeneration=0;
 function showLibrary() {
@@ -310,6 +336,7 @@ async function openDetail(id,other) {
     ${d.pdf?`<p class="meta">${d.pdf_pages} 页，${d.text_pages} 页已提取文本。${d.text_pages<d.pdf_pages?' 纯扫描页可阅读和写页码批注，需先 OCR 才能全文检索。':''}</p>`:''}
     <form class="row" id="attach"><label>附加本地 PDF<input type="file" name="pdf" accept=".pdf,application/pdf" required></label><button type="submit">上传并索引</button><span class="errorText meta" role="status"></span></form></section>
     ${d.abstract?`<section><h3>整理摘要</h3><div class="preserve">${esc(d.abstract)}</div>${d.keywords?`<p class="meta">作者关键词 · ${esc(d.keywords)}</p>`:''}</section>`:d.keywords?`<section><h3>作者关键词</h3><p>${esc(d.keywords)}</p></section>`:''}
+    <section data-study-summary="${d.id}">${designSummary(d)}</section>
     ${d.pdf_review?.sections.length?`<section><h3>PDF 内容提取</h3>${pdfEvidence(d)}</section>`:''}
     <section><h3>研究笔记</h3>${d.note?`<div class="preserve">${formatNote(d.note)}</div>`:empty('可以在编辑资料时记录研究问题、方法、主要发现及你的判断。')}</section>
     ${d.segments.length?`<section><h3>来源摘述</h3>${d.segments.map(s=>`<p class="meta"><strong>${esc(s.loc)}</strong> · ${esc(s.body)}</p>`).join('')}</section>`:''}
@@ -358,6 +385,7 @@ function openEdit(id,reviewing=false) {
     ${proposedTags}
     ${draft?.suggestions.length?`<details class="wide fieldSources"><summary>查看标签建议依据</summary><ul>
       ${draft.suggestions.map(t=>`<li><strong>${esc(t.name)}</strong> <span>${t.matches.map(m=>esc(m.source+' · '+m.term)).join('，')}</span></li>`).join('')}</ul></details>`:''}
+    ${id?`<section class="wide intakePanel" data-study-summary="${id}">${designSummary(d)}</section>`:''}
     <label class="wide">整理摘要<textarea name="abstract" placeholder="可修订自动提取的摘要">${field('abstract')}</textarea></label>
     <label class="wide">作者关键词<input name="keywords" value="${field('keywords')}"></label>
     ${draft?`<section class="wide intakePanel"><div class="panelhead"><h3>从原文提取的内容</h3><button type="button" data-pdf="${d.id}">打开原文</button></div>${pdfEvidence(d)}
@@ -549,6 +577,7 @@ document.addEventListener('click',async e=>{
     }
     if(d.askpreset){state.question=d.askpreset;go('ask');return $('#askForm').requestSubmit();}
     if(d.doc)return await openDetail(Number(d.doc));
+    if(d.study)return await openStudy(Number(d.study));
     if(d.rel)return await openDetail(Number(d.rel),Number(d.other));
     if(d.pdfimport!==undefined)return showPdfImport();
     if(d.analyze){
@@ -648,7 +677,7 @@ document.addEventListener('click',async e=>{
     const [status]=await Promise.all([api('/api/status'),refreshDocs()]);
     state.topics=status.topics;
     updateEngine(status);
-    go('library');
+    go(location.hash==='#research-designs'?'studies':'library');
     refreshInbox().catch(()=>{});
     const refresh=()=>checkWatches().then(refreshInbox).catch(()=>{});
     refresh();

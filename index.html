@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="用于发现、阅读和串联劳动关系研究证据的本地知识库。">
   <title>劳动关系知识库</title>
-  <link rel="stylesheet" href="./style.css">
-  <script type="module" src="./app.js"></script>
+  <link rel="stylesheet" href="./style.css?v=research-1">
+  <script type="module" src="./app.js?v=research-1"></script>
 </head>
 <body>
   <aside class="rail">
@@ -16,6 +16,7 @@
     </div>
     <nav aria-label="工作区">
       <button class="nav active" data-view="library"><span class="icon" data-icon="library"></span>文献库</button>
+      <button class="nav" data-view="studies"><span class="icon" data-icon="studies"></span>研究设计对照</button>
       <button class="nav" data-view="discover"><span class="icon" data-icon="search"></span>双语发现</button>
       <button class="nav" data-view="inbox"><span class="icon" data-icon="inbox"></span>订阅与收件箱 <span class="count" id="inboxCount" hidden></span></button>
       <button class="nav" data-view="ask"><span class="icon" data-icon="ask"></span>证据问答</button>
@@ -28,6 +29,7 @@
   </main>
   <dialog id="detail"><div id="detailContent"></div></dialog>
   <dialog id="edit"><div id="editContent"></div></dialog>
+  <dialog id="research" aria-label="研究设计"><div id="researchContent"></div></dialog>
   <dialog id="reader"><div id="readerContent"></div></dialog>
   <div id="toast" role="status" hidden></div>
 </body>

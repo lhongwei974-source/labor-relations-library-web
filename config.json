@@ -11,6 +11,10 @@
     {"name":"算法管理","zh":"外卖骑手 算法管理","en":"algorithmic management platform workers","terms":["算法控制","数字控制","派单","劳动控制","algorithmic control","algorithmic management","labour process"]},
     {"name":"社会保险与职业伤害","zh":"新就业形态 职业伤害保障","en":"platform workers social protection occupational injury","terms":["社会保险","职业伤害","工伤","social protection","occupational injury","workers compensation"]},
     {"name":"集体协商与权益救济","zh":"平台劳动 集体协商 劳动争议","en":"platform labour collective bargaining dispute resolution","terms":["工会","集体协商","劳动争议","申诉","collective bargaining","worker voice","dispute resolution"]},
-    {"name":"劳动权益保障","zh":"新就业形态 劳动权益保障","en":"platform workers labour rights decent work","terms":["权益保障","体面劳动","labor rights","labour rights","decent work"]}
+    {"name":"劳动权益保障","zh":"新就业形态 劳动权益保障","en":"platform workers labour rights decent work","terms":["权益保障","体面劳动","labor rights","labour rights","decent work"]},
+    {"name":"公司金融","zh":"公司金融 企业融资","en":"corporate finance firm financing","terms":["公司治理","资本结构","融资约束","企业绩效","corporate governance","capital structure","financial constraints","firm performance"]},
+    {"name":"资产定价与投资","zh":"资产定价 股票收益","en":"asset pricing stock returns","terms":["资产定价","股票收益","风险溢价","市场异象","stock returns","risk premium","asset pricing","portfolio returns"]},
+    {"name":"金融市场与风险","zh":"金融市场 流动性 金融风险","en":"financial markets liquidity systemic risk","terms":["市场流动性","系统性风险","金融风险","信用风险","股价崩盘风险","market liquidity","systemic risk","credit risk","stock price crash risk"]},
+    {"name":"金融科技与数字金融","zh":"数字金融 金融科技 数字普惠金融","en":"digital finance fintech financial inclusion","terms":["数字金融","金融科技","数字普惠金融","普惠金融","fintech","digital finance","digital financial inclusion","financial inclusion"]}
   ]
 }

@@ -1,5 +1,6 @@
 import { describePdf, readPdf } from './pdf-intake.mjs';
 import { discover } from './discovery.mjs';
+import {designFields,identifyDesign,normalizeDesigns} from './research-design.mjs';
 
 export const maxPdf=64*1024*1024;
 const stamp=()=>new Date().toISOString();
@@ -31,7 +32,8 @@ const idb=()=>new Promise((ok,bad)=>{
 const req=call=>new Promise((ok,bad)=>{call.onsuccess=()=>ok(call.result);call.onerror=()=>bad(call.error);});
 const fresh=()=>({clock:0,docs:[],marks:[],links:[],watches:[],inbox:[]});
 const next=s=>++s.clock;
-const publicRow=d=>Object.fromEntries(Object.entries(d).filter(([k])=>!['pages','hash','segments','pdf_review'].includes(k)));
+const internalFields=new Set(['pages','hash','segments','pdf_review','design_auto','designs','design_rev']);
+const publicRow=d=>Object.fromEntries(Object.entries(d).filter(([k])=>!internalFields.has(k)));
 
 function getDoc(s,id){
   const d=s.docs.find(d=>d.id===id);
@@ -68,7 +70,7 @@ function storeDoc(s,input,id){
   return {id};
 }
 
-const assets=Promise.all([idb(),...['config.json','seed.json'].map(path=>fetch(openAsset(path)).then(r=>{
+const assets=Promise.all([idb(),...['config.json?v=research-1','seed.json'].map(path=>fetch(openAsset(path)).then(r=>{
   if(!r.ok)throw Error('工作台资源加载失败。');
   return r.json();
 }))]);
@@ -117,10 +119,29 @@ async function current(){
 }
 
 function marksOf(s,id){return s.marks.filter(m=>m.doc===id).sort((a,b)=>a.page-b.page||a.id-b.id);}
+function designCandidate(d){
+  return 'design_auto' in d ? d.design_auto : identifyDesign(d.pages||[]);
+}
+function documentDesigns(d,auto){
+  return d.designs ?? (auto?[auto]:[]);
+}
+function designIndex(s){
+  const papers=s.docs.filter(d=>d.kind!=='练习').map(d=>({
+    id:d.id,title:d.title,year:d.year,review_pending:d.review_pending,pdf:d.pdf
+  }));
+  const rows=s.docs.filter(d=>d.kind!=='练习').flatMap(d=>{
+    const designs=d.designs??documentDesigns(d,designCandidate(d));
+    return designs.map((design,index)=>({...design,
+      doc:d.id,title:d.title,year:d.year,index,pdf:d.pdf,review_pending:d.review_pending}));
+  });
+  return {papers,rows};
+}
 function details(s,id){
   const d=getDoc(s,id);
+  const auto=designCandidate(d);
   return {
     ...publicRow(d),segments:d.segments||[],pdf_review:d.pdf_review||null,suggestions:d.pdf_review?.suggestions||[],
+    designs:documentDesigns(d,auto),designCandidate:auto,designRevision:d.design_rev||'',
     marks:marksOf(s,id),
     links:s.links.filter(l=>l.a===id||l.b===id).map(l=>{
       const other=l.a===id?l.b:l.a;
@@ -217,8 +238,12 @@ function ask(s,q){
 }
 
 function withPdf(d,parsed,hash,review){
+  if(d.pdf&&d.hash!==hash&&d.designs){
+    d.designs=d.designs.map(design=>({...design,evidence:{}}));
+    d.design_rev=crypto.randomUUID();
+  }
   Object.assign(d,{pdf:true,hash,pdf_pages:parsed.pages.length,text_pages:parsed.pages.filter(Boolean).length,
-    pages:parsed.pages,pdf_review:review,updated:stamp()});
+    pages:parsed.pages,pdf_review:review,design_auto:identifyDesign(parsed.pages),updated:stamp()});
 }
 async function ingest(file,name,id){
   if(!(file instanceof Blob)||!file.size||file.size>maxPdf)throw Error('请选择 PDF。单个文件上限 64 MB。');
@@ -331,6 +356,7 @@ export async function api(path,body,method=body===undefined?'GET':'POST'){
   if(p==='/api/pdf-import'&&post)return ingest(body,q('name'));
   if(p==='/api/discover')return discoverNow(q('zh'),q('en'),q('kind'));
   if(p==='/api/ask'&&post)return ask(await current(),clean(body.q,800));
+  if(p==='/api/designs')return designIndex(await current());
   if(p==='/api/map'){
     const s=await current();
     const docs=s.docs.filter(d=>!d.review_pending).map(publicRow);
@@ -338,7 +364,7 @@ export async function api(path,body,method=body===undefined?'GET':'POST'){
     return {docs,links:s.links.filter(l=>ids.has(l.a)&&ids.has(l.b))};
   }
   if(p==='/api/zotero/import'&&post)return mutate(s=>cslImport(s,body));
-  const doc=p.match(/^\/api\/docs\/(\d+)(?:\/(pdf|analyze|marks|links))?$/);
+  const doc=p.match(/^\/api\/docs\/(\d+)(?:\/(pdf|analyze|marks|links|designs))?$/);
   if(doc){
     const id=Number(doc[1]),action=doc[2];
     if(!action&&method==='DELETE')return mutate((s,files)=>{
@@ -349,6 +375,14 @@ export async function api(path,body,method=body===undefined?'GET':'POST'){
       return {deleted:true};
     });
     if(!action)return post?mutate(s=>storeDoc(s,body,id)):details(await current(),id);
+    if(action==='designs'&&post)return mutate(s=>{
+      const d=getDoc(s,id);
+      const count=d.pdf?d.pdf_pages:0;
+      if((body.revision||'')!==(d.design_rev||''))throw Error('研究设计已在其他页面更新，请重新打开后再保存。');
+      d.designs=normalizeDesigns(body.designs,count);
+      d.design_rev=crypto.randomUUID();
+      return {id,designs:d.designs};
+    });
     if(action==='pdf')return post?ingest(body,q('name')||'附件.pdf',id):getPdf(id);
     if(post&&action==='analyze')return analyze(id);
     if(post&&action==='marks')return mutate(s=>{
@@ -403,7 +437,9 @@ export async function entryMarkdown(id){
   const lines=['---',`title: ${JSON.stringify(d.title)}`,`primary_tag: ${JSON.stringify(d.primary_tag)}`,`tags: ${JSON.stringify(tags(d.tags))}`,
     '---','',`# ${d.title}`,'',d.authors,d.venue,d.year,d.url,'','## 整理摘要','',d.abstract,'','## 研究笔记','',d.note,
     '','## PDF 批注','',...d.marks.map(m=>`- PDF 第 ${m.page} 页 · ${m.style} · ${m.quote || ''}\n  ${m.note || ''}`),
-    '','## 研究关系','',...d.links.map(l=>`- ${l.type} · [[${l.title}]] · ${l.note}`),''];
+    '','## 研究关系','',...d.links.map(l=>`- ${l.type} · [[${l.title}]] · ${l.note}`),
+    ...d.designs.flatMap((row,i)=>['',`## ${row.name||'研究设计 '+(i+1)}（${row.reviewed?'已核对':'待核对'}）`,
+      ...designFields.filter(f=>row[f.key]).map(f=>`- ${f.label}｜${row[f.key]}`)]),''];
   return new Blob([lines.join('\n')],{type:'text/markdown;charset=utf-8'});
 }
 
@@ -453,7 +489,9 @@ export async function restoreBackup(file){
       pages:pageCount&&Array.isArray(doc.pages)?doc.pages.slice(0,pageCount).map(p=>clean(p,500000)):[],
       hash:/^[\da-f]{64}$/i.test(doc.hash)?doc.hash:'',
       segments:Array.isArray(doc.segments)?doc.segments.filter(Boolean).slice(0,200).map(v=>({loc:clean(v.loc,100),body:clean(v.body,14000)})):[],
-      pdf_review:validatedReview(doc.pdf_review,pageCount)});
+      pdf_review:validatedReview(doc.pdf_review,pageCount),
+      ...(Array.isArray(doc.designs)?{designs:normalizeDesigns(doc.designs,pageCount),design_rev:crypto.randomUUID()}:{}),
+      ...('design_auto' in doc?{design_auto:doc.design_auto?normalizeDesigns([doc.design_auto],pageCount)[0]||null:null}:{})});
     s.clock=Math.max(s.clock,doc.id);
   }
   const expected=new Set(s.docs.filter(d=>d.pdf).map(d=>d.id));
