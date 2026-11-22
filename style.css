@@ -195,6 +195,11 @@ dialog::backdrop{background:#20352bc5}
 .design-status{display:inline-block;padding:2px 7px;background:#fbefca;color:#715115;border-radius:5px;font-size:12px;white-space:nowrap}
 .design-status.is-reviewed{background:#dff1e8;color:#235741}
 .design-table td:last-child button{display:block;padding:5px 3px;color:var(--forest)}
+.paper-glance{margin-top:9px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px 10px;padding:6px 8px;background:#f0f6f2;border-radius:6px;font-size:12px;color:#3b584d}
+.paper-glance>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.paper-glance strong{color:#214635;margin-right:4px}
+.paper-glance .glance-data{grid-column:1/-1}
+.paper-glance small{grid-column:1/-1;font-size:12px;color:var(--muted)}
 @media(max-width:700px){.design-filters{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:570px){
   .rail nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}

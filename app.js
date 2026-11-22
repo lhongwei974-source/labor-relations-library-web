@@ -1,4 +1,4 @@
-import {api,checkWatches,entryMarkdown,getPdf,exportBackup,restoreBackup} from './browser-api.mjs?v=research-1';
+import {api,checkWatches,entryMarkdown,getPdf,exportBackup,restoreBackup} from './browser-api.mjs?v=summary-1';
 import {designSummary,mountComparison,mountDesignEditor} from './research-ui.mjs';
 
 const asset=path=>new URL(path,import.meta.url).href;
@@ -62,8 +62,16 @@ function bind(form, handler) {
   });
 }
 const heading = (title,sub,tools='') => `<header class="viewhead"><div><h1>${title}</h1><p class="subtitle">${sub}</p></div><div class="tools">${tools}</div></header>`;
+function glance(d){
+  if(d.kind==='练习')return '';
+  const s=d.designSummary||d.designs?.find(x=>x.reviewed)||d.designs?.[0]||{};
+  const fields=[['收录',d.journalIndex||'待核验'],['X',s.x],['Y',s.y],['回归方法',s.model],['数据',s.data]];
+  return `<div class="paper-glance" aria-label="研究设计速览">
+    ${fields.map(([name,val])=>`<span title="${esc(val||'待填写')}"${name==='数据'?' class="glance-data"':''}><strong>${name}</strong> ${esc(val||'—')}</span>`).join('')}
+    ${s.x||s.y||s.model||s.data?`<small>${s.reviewed?'已核对':'自动候选或待核对'}${s.count>1?' · '+s.count+' 组':''}</small>`:''}</div>`;
+}
 const compactEntry = d => `<article class="entry"><div class="entryline"><div><button class="entrytitle" data-doc="${d.id}">${esc(d.title)}</button><div class="meta">${meta(d)}</div></div>${label(d.review_pending?'待核对':d.kind)}</div>${d.hit?`<p class="meta">${esc(d.hit)}</p>`:''}<div class="row">
-  ${d.primary_tag&&!d.review_pending?`<span class="tag mainTag" title="主专题">${esc(d.primary_tag)}</span>`:''}${chips(tags(d).filter(t=>d.review_pending||t!==d.primary_tag))}</div></article>`;
+  ${d.primary_tag&&!d.review_pending?`<span class="tag mainTag" title="主专题">${esc(d.primary_tag)}</span>`:''}${chips(tags(d).filter(t=>d.review_pending||t!==d.primary_tag))}</div>${glance(d)}</article>`;
 
 async function refreshDocs() { state.docs=await api('/api/docs'); }
 async function refreshInbox() {
@@ -333,6 +341,7 @@ async function openDetail(id,other) {
       ${outbound(d.url || (d.doi?'https://doi.org/'+d.doi:''),'来源网站')}
       <button data-markdown="${d.id}">导出 Markdown</button></div>
     <div class="row">${d.primary_tag?`<span class="tag mainTag">主专题 · ${esc(d.primary_tag)}</span>`:''}${chips(tags(d).filter(t=>t!==d.primary_tag))}</div>
+    ${glance(d)}${outbound(d.journalEvidence,'查看期刊收录依据')}
     ${d.pdf?`<p class="meta">${d.pdf_pages} 页，${d.text_pages} 页已提取文本。${d.text_pages<d.pdf_pages?' 纯扫描页可阅读和写页码批注，需先 OCR 才能全文检索。':''}</p>`:''}
     <form class="row" id="attach"><label>附加本地 PDF<input type="file" name="pdf" accept=".pdf,application/pdf" required></label><button type="submit">上传并索引</button><span class="errorText meta" role="status"></span></form></section>
     ${d.abstract?`<section><h3>整理摘要</h3><div class="preserve">${esc(d.abstract)}</div>${d.keywords?`<p class="meta">作者关键词 · ${esc(d.keywords)}</p>`:''}</section>`:d.keywords?`<section><h3>作者关键词</h3><p>${esc(d.keywords)}</p></section>`:''}
@@ -380,6 +389,8 @@ function openEdit(id,reviewing=false) {
     <label>类型<select name="kind">${options(kinds,d.kind)}</select></label><label>语言<select name="lang">${options(['中文','English','其他'],d.lang)}</select></label>
     <label>DOI<input name="doi" value="${field('doi')}"></label><label>刊名或出版来源<input name="venue" value="${field('venue')}"></label>
     <label>来源网址<input name="url" type="url" value="${esc(d.url)}"></label><label>证据状态<input name="basis" value="${esc(d.basis)}" placeholder="如 题录、摘要、作者稿"></label>
+    <label>期刊收录<select name="journalIndex"><option value="">待核验</option>${options(['SCIE','SSCI','SCIE + SSCI','其他'],d.journalIndex)}</select></label>
+    <label>收录依据链接<input name="journalEvidence" type="url" value="${esc(d.journalEvidence)}"><small>${outbound('https://mjl.clarivate.com/','在 Clarivate 核验刊名或 ISSN')}</small></label>
     <label>主题标签<input name="tags" value="${esc(d.tags)}" placeholder="如 平台用工,算法管理"><small>可填写多个，用逗号分隔</small></label>
     <label>主专题<select name="primary_tag"></select><small>决定文献的主归档专题</small></label>
     ${proposedTags}
@@ -404,6 +415,7 @@ function openEdit(id,reviewing=false) {
   tagField.addEventListener('input',()=>renderPrimary(primary.value));
   bind(form,async(form,button)=>{
     const record=formData(form);
+    if(record.journalIndex&&!record.journalEvidence)throw Error('请填写期刊收录的核验链接。');
     if(d.zotero)record.zotero=d.zotero;
     const keep=button?.name==='keepDraft';
     if(d.review_pending&&!keep)record.confirmReview=true;
@@ -435,14 +447,15 @@ function showBackup(){
     <div class="dialogBody forms"><p class="meta">备份包含 PDF、题录、笔记、批注、专题和文献关系。备份文件请保存在自己信任的位置。</p>
     <div><button data-backupexport>导出当前知识库</button></div>
     <form class="forms" id="backupForm"><label>备份文件<input type="file" name="backup" accept=".json,application/json" required></label>
-    <div class="row"><button type="submit">导入备份</button><span class="errorText meta" role="status"></span></div></form></div>`;
+    <div class="row"><button class="primary" type="submit">合并导入</button><button type="submit" name="replace">替换恢复</button><span class="errorText meta" role="status"></span></div></form></div>`;
   edit.showModal();
-  bind($('#backupForm'),async form=>{
-    if(!window.confirm('导入备份会替换此浏览器里的知识库。继续吗？'))return;
-    await restoreBackup(formData(form).backup);
+  bind($('#backupForm'),async(form,button)=>{
+    const merge=button?.name!=='replace';
+    if(!merge&&!window.confirm('替换恢复会覆盖此浏览器里的知识库。继续吗？'))return;
+    const result=await restoreBackup(formData(form).backup,{merge});
     edit.close();await refreshDocs();await refreshInbox();
     state.tag='';state.zone='';state.kind='';state.q='';go('library');
-    toast('已恢复备份。');
+    toast(merge?`已合并。新增 ${result.added} 篇文献、${result.marks} 条批注，匹配 ${result.duplicates} 篇既有文献。${result.conflicts?' '+result.conflicts+' 篇有不同 PDF 版本，保留当前版本及其批注。':''}`:'已恢复备份。');
   });
 }
 

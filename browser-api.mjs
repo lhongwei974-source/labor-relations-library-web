@@ -6,7 +6,7 @@ export const maxPdf=64*1024*1024;
 const stamp=()=>new Date().toISOString();
 const clean=(v,size=2000)=>String(v??'').trim().slice(0,size);
 const tags=v=>[...new Set(clean(v).split(/[,，\n]/).map(x=>x.trim()).filter(Boolean))];
-const states=['title','authors','year','kind','lang','doi','url','basis','tags','note','zotero','venue','abstract','keywords'];
+const states=['title','authors','year','kind','lang','doi','url','basis','tags','note','zotero','venue','abstract','keywords','journalIndex','journalEvidence'];
 const positive=v=>Number.isSafeInteger(v)&&v>0;
 const openAsset=name=>new URL(name,import.meta.url);
 const segmenter=new Intl.Segmenter('zh',{granularity:'word'});
@@ -46,6 +46,11 @@ function SetFields(input,old={}){
   result.tags=tags(result.tags).join(',');
   result.doi=result.doi.replace(/^https?:\/\/(?:dx\.)?doi\.org\/|^doi:\s*/i,'').toLowerCase();
   result.url=httpUrl(result.url);
+  result.journalEvidence=httpUrl(result.journalEvidence);
+  if(!['SCIE','SSCI','SCIE + SSCI','其他'].includes(result.journalIndex)||!result.journalEvidence){
+    result.journalIndex='';
+    result.journalEvidence='';
+  }
   result.zotero=/^[A-Z\d]{8}$/i.test(result.zotero)?result.zotero:'';
   const main=clean(input.primary_tag??old.primary_tag??tags(result.tags)[0],150);
   return {...result,primary_tag:tags(result.tags).includes(main)?main:'',updated:stamp()};
@@ -70,7 +75,7 @@ function storeDoc(s,input,id){
   return {id};
 }
 
-const assets=Promise.all([idb(),...['config.json?v=research-1','seed.json'].map(path=>fetch(openAsset(path)).then(r=>{
+const assets=Promise.all([idb(),...['config.json?v=summary-1','seed.json'].map(path=>fetch(openAsset(path)).then(r=>{
   if(!r.ok)throw Error('工作台资源加载失败。');
   return r.json();
 }))]);
@@ -217,7 +222,12 @@ function list(s,params){
     rows.push({d,hit,best});
   }
   return rows.sort((a,b)=>b.best-a.best||b.d.updated.localeCompare(a.d.updated)||b.d.id-a.d.id)
-    .map(({d,hit})=>({...publicRow(d),hit}));
+    .map(({d,hit})=>{
+      const designs=documentDesigns(d,designCandidate(d));
+      const first=designs.find(x=>x.reviewed)||designs[0];
+      return {...publicRow(d),hit,designSummary:first?{
+        x:first.x,y:first.y,model:first.model,data:first.data,reviewed:first.reviewed,count:designs.length}:null};
+    });
 }
 function ask(s,q){
   if(!q)throw Error('请填写研究问题。');
@@ -470,7 +480,7 @@ function validatedReview(review,pageCount){
   return {...Object.fromEntries(['title','authors','year','kind','lang','doi','venue','abstract','keywords'].map(k=>[k,clean(review[k],4000)])),
     sections,sources,suggestions,warning:clean(review.warning,240)};
 }
-export async function restoreBackup(file){
+export async function restoreBackup(file,{merge=false}={}){
   await ready;
   if(!(file instanceof Blob)||!file.size)throw Error('请选择知识库备份文件。');
   const source=JSON.parse(await file.text());
@@ -499,6 +509,10 @@ export async function restoreBackup(file){
     if(!p||!expected.delete(p.id)||typeof p.base64!=='string'||p.base64.length>maxPdf*1.34+8)throw Error('备份中存在无效或过大的 PDF。');
     const data=Uint8Array.from(atob(p.base64),c=>c.charCodeAt(0));
     if(!new TextDecoder().decode(data.subarray(0,1024)).includes('%PDF-'))throw Error('备份中的 PDF 格式无效。');
+    const digest=[...new Uint8Array(await crypto.subtle.digest('SHA-256',data))].map(n=>n.toString(16).padStart(2,'0')).join('');
+    const doc=getDoc(s,p.id);
+    if(doc.hash&&doc.hash!==digest)throw Error('备份中的 PDF 与文献记录不匹配。');
+    doc.hash=digest;
     files.push({id:p.id,blob:new Blob([data],{type:'application/pdf'})});
   }
   if(expected.size)throw Error('备份中的 PDF 附件不完整。');
@@ -526,9 +540,79 @@ export async function restoreBackup(file){
     s.inbox.push({id:next(s),watch,key:clean(entry.key,2000),seen:Number(!!entry.seen),stamp:Number(entry.stamp)||0,
       item:{...item,via:clean(entry.item.via,120),excerpt:clean(entry.item.excerpt,14000),pdfUrl:httpUrl(entry.item.pdfUrl)}});
   }
-  await mutate((existing,store)=>{
+  return mutate((existing,store)=>{
+    if(merge)return mergeLibraries(existing,store,s,files);
     Object.assign(existing,s);
     store.clear();
     for(const file of files)store.put(file);
+    return {added:s.docs.length,duplicates:0,marks:s.marks.length,conflicts:0};
   });
+}
+
+function mergeLibraries(target,store,source,files){
+  const lookup=new Map(files.map(file=>[file.id,file.blob]));
+  const mapped=new Map(),samePdf=new Set();
+  const result={added:0,duplicates:0,marks:0,conflicts:0};
+  for(const input of source.docs){
+    const match=target.docs.find(d=>(input.hash&&d.hash===input.hash)||(input.doi&&d.doi===input.doi)||
+      (input.zotero&&d.zotero===input.zotero)||((!input.pdf||!d.pdf)&&fold(input.title)===fold(d.title)&&
+      (!input.year||!d.year||input.year===d.year)));
+    const blob=lookup.get(input.id);
+    if(!match){
+      const id=next(target);
+      target.docs.push({...input,id});
+      mapped.set(input.id,id);
+      if(blob){store.put({id,blob});samePdf.add(input.id);}
+      result.added++;
+      continue;
+    }
+    result.duplicates++;
+    mapped.set(input.id,match.id);
+    for(const key of states){
+      if(['journalIndex','journalEvidence'].includes(key))continue;
+      if(!match[key]&&input[key])match[key]=input[key];
+    }
+    if(!match.journalIndex&&input.journalIndex){
+      match.journalIndex=input.journalIndex;
+      match.journalEvidence=input.journalEvidence;
+    }
+    match.tags=[...new Set([...tags(match.tags),...tags(input.tags)])].join(',');
+    match.primary_tag ||= input.primary_tag;
+    if(blob&&!match.pdf){
+      for(const key of ['pdf','hash','pages','pdf_pages','text_pages','pdf_review','design_auto'])match[key]=input[key];
+      store.put({id:match.id,blob});
+    }
+    if(blob&&match.hash===input.hash)samePdf.add(input.id);
+    else if(blob)result.conflicts++;
+    if(!match.designs?.length&&input.designs?.length){
+      match.designs=input.designs.map(d=>samePdf.has(input.id)?d:{...d,evidence:{}});
+      match.design_rev=crypto.randomUUID();
+    }
+  }
+  for(const m of source.marks){
+    if(!samePdf.has(m.doc))continue;
+    const doc=mapped.get(m.doc);
+    if(target.marks.some(other=>other.doc===doc&&other.page===m.page&&other.style===m.style&&other.note===m.note&&other.quote===m.quote&&
+      JSON.stringify(other.rects)===JSON.stringify(m.rects)))continue;
+    target.marks.push({...m,doc,id:next(target)});
+    result.marks++;
+  }
+  for(const l of source.links){
+    const a=mapped.get(l.a),b=mapped.get(l.b);
+    if(a===b||target.links.some(x=>x.a===a&&x.b===b&&x.type===l.type))continue;
+    target.links.push({...l,a,b,id:next(target)});
+  }
+  const watches=new Map();
+  for(const watch of source.watches){
+    const known=target.watches.find(w=>w.zh===watch.zh&&w.en===watch.en);
+    const id=known?.id||next(target);
+    if(!known)target.watches.push({...watch,id});
+    watches.set(watch.id,id);
+  }
+  for(const item of source.inbox){
+    const watch=watches.get(item.watch);
+    if(!watch||target.inbox.some(i=>i.watch===watch&&i.key===item.key))continue;
+    target.inbox.push({...item,watch,id:next(target)});
+  }
+  return result;
 }
