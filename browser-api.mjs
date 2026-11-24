@@ -1,6 +1,7 @@
 import { describePdf, readPdf } from './pdf-intake.mjs';
 import { discover } from './discovery.mjs';
 import {designFields,identifyDesign,normalizeDesigns} from './research-design.mjs';
+import {cleanIdeaTags} from './inspiration.mjs';
 
 export const maxPdf=64*1024*1024;
 const stamp=()=>new Date().toISOString();
@@ -310,7 +311,7 @@ function normalizeMark(value,d) {
   if(!d.pdf||!Number.isInteger(page)||page<1||page>d.pdf_pages||(!quote&&!note))throw Error('请选择 PDF 页和有效批注内容。');
   const style=['高亮','下划线','批注'].includes(value.style)?value.style:'批注';
   const rects=Array.isArray(value.rects)?value.rects.slice(0,100).filter(r=>Array.isArray(r)&&r.length===4&&r.every(n=>Number.isFinite(n)&&n>=0&&n<=1)):[];
-  return {doc:d.id,page,style,quote,note,rects};
+  return {doc:d.id,page,style,quote,note,rects,ideaTags:cleanIdeaTags(value.ideaTags)};
 }
 function cslImport(s,items){
   if(!Array.isArray(items)||items.length>1000)throw Error('请选择 Zotero 的 CSL JSON 数组，每批最多 1000 条。');
@@ -367,6 +368,11 @@ export async function api(path,body,method=body===undefined?'GET':'POST'){
   if(p==='/api/discover')return discoverNow(q('zh'),q('en'),q('kind'));
   if(p==='/api/ask'&&post)return ask(await current(),clean(body.q,800));
   if(p==='/api/designs')return designIndex(await current());
+  if(p==='/api/ideas'){
+    const s=await current();
+    const docs=new Map(s.docs.map(d=>[d.id,d]));
+    return s.marks.filter(m=>docs.has(m.doc)).toReversed().map(m=>({...m,title:docs.get(m.doc).title}));
+  }
   if(p==='/api/map'){
     const s=await current();
     const docs=s.docs.filter(d=>!d.review_pending).map(publicRow);
@@ -413,6 +419,12 @@ export async function api(path,body,method=body===undefined?'GET':'POST'){
   const item=p.match(/^\/api\/(marks|links|watches|inbox)\/(\d+)$/);
   if(item){
     const [,key,raw]=item,id=Number(raw);
+    if(key==='marks'&&post)return mutate(s=>{
+      const mark=s.marks.find(m=>m.id===id);
+      if(!mark)throw Error('这条批注已不存在。');
+      mark.ideaTags=cleanIdeaTags(body.ideaTags);
+      return {id};
+    });
     if(key==='watches'&&post){
       const watch=(await current()).watches.find(w=>w.id===id);
       if(!watch)throw Error('找不到该订阅。');
@@ -592,8 +604,12 @@ function mergeLibraries(target,store,source,files){
   for(const m of source.marks){
     if(!samePdf.has(m.doc))continue;
     const doc=mapped.get(m.doc);
-    if(target.marks.some(other=>other.doc===doc&&other.page===m.page&&other.style===m.style&&other.note===m.note&&other.quote===m.quote&&
-      JSON.stringify(other.rects)===JSON.stringify(m.rects)))continue;
+    const match=target.marks.find(other=>other.doc===doc&&other.page===m.page&&other.style===m.style&&other.note===m.note&&other.quote===m.quote&&
+      JSON.stringify(other.rects)===JSON.stringify(m.rects));
+    if(match){
+      match.ideaTags=cleanIdeaTags([...(match.ideaTags||[]),...(m.ideaTags||[])]);
+      continue;
+    }
     target.marks.push({...m,doc,id:next(target)});
     result.marks++;
   }

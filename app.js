@@ -1,7 +1,10 @@
-import {api,checkWatches,entryMarkdown,getPdf,exportBackup,restoreBackup} from './browser-api.mjs?v=summary-1';
+import {api,checkWatches,entryMarkdown,getPdf,exportBackup,restoreBackup} from './browser-api.mjs?v=reading-1';
 import {designSummary,mountComparison,mountDesignEditor} from './research-ui.mjs';
+import {mountContinuous} from './continuous-pdf.mjs';
+import {categories} from './inspiration.mjs';
 
 const asset=path=>new URL(path,import.meta.url).href;
+const readingMode=new URLSearchParams(location.search).get('v')==='reading-1';
 
 const $ = (sel, parent=document) => parent.querySelector(sel);
 const $$ = (sel, parent=document) => [...parent.querySelectorAll(sel)];
@@ -22,6 +25,7 @@ const symbols = {
 };
 const icon = name => `<span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24">${symbols[name]||''}</svg></span>`;
 $$('[data-icon]').forEach(n=>n.innerHTML=icon(n.dataset.icon));
+if(readingMode)document.querySelector('[data-view=ideas]').hidden=false;
 const tags = d => (d.tags || '').split(',').filter(Boolean);
 const label = kind => `<span class="type" data-kind="${esc(kind)}">${esc(kind)}</span>`;
 const chips = list => list.map(t=>`<span class="tag">${esc(t)}</span>`).join('');
@@ -93,8 +97,54 @@ function go(name) {
     btn.classList.toggle('active',active);
     if(active) btn.setAttribute('aria-current','page'); else btn.removeAttribute('aria-current');
   });
-  const handler=({library:showLibrary,studies:showStudies,discover:showDiscovery,inbox:showInbox,ask:showAsk,map:showMap})[name];
+  const handler=({library:showLibrary,studies:showStudies,discover:showDiscovery,inbox:showInbox,ask:showAsk,map:showMap,ideas:showIdeas})[name];
   if (handler) Promise.resolve(handler()).catch(e=>toast(e.message,true));
+}
+async function showIdeas(){
+  const ideas=await api('/api/ideas');
+  if(state.view!=='ideas')return;
+  const allTags=[...new Set([...categories,...ideas.flatMap(i=>i.ideaTags||[])])];
+  const papers=[...new Map(ideas.map(i=>[i.doc,i.title])).entries()];
+  const old=$('#ideaFilter');
+  const previous=old?formData(old):{};
+  view.innerHTML=heading('灵感库','跨文献检索高亮原文和批注，按研究用途筛选。','<button id="exportIdeas">导出当前结果 · Markdown</button>')+
+    `<section class="panel stack"><form class="formgrid" id="ideaFilter">
+    <label>关键词<input name="q" type="search" placeholder="搜索原文、批注或题名" value="${esc(previous.q)}"></label>
+    <label>分类<select name="category"><option value="">全部分类</option><option value="~">未分类</option>${options(allTags,previous.category)}</select></label>
+    <label class="wide">文献<select name="doc"><option value="">全部文献</option>${papers.map(([id,title])=>`<option value="${id}">${esc(title)}</option>`).join('')}</select></label>
+    </form><p class="meta" id="ideaCount" role="status"></p><div id="ideaResults" class="stack"></div></section>`;
+  const form=$('#ideaFilter');
+  form.elements.category.value=previous.category||'';
+  form.elements.doc.value=previous.doc||'';
+  const results=$('#ideaResults');
+  let visible=[];
+  const draw=()=>{
+    const {q,category,doc}=formData(form);
+    const term=q.trim().toLowerCase();
+    visible=ideas.filter(i=>(!term||[i.title,i.quote,i.note].join(' ').toLowerCase().includes(term))&&(!doc||String(i.doc)===doc)&&
+      (!category||(category==='~'?!i.ideaTags?.length:(i.ideaTags||[]).includes(category))));
+    $('#ideaCount').textContent=`${visible.length} 条灵感 · ${new Set(visible.map(i=>i.doc)).size} 篇文献`;
+    $('#exportIdeas').disabled=!visible.length;
+    results.innerHTML=visible.map(i=>`<article class="idea-card">
+      <div class="panelhead"><h3>${esc(i.title)}</h3><button data-pdf="${i.doc}" data-page="${i.page}">打开第 ${i.page} 页</button></div>
+      <div class="row">${chips(i.ideaTags?.length?i.ideaTags:['未分类'])}</div>
+      ${i.quote?`<h4>原文摘录</h4><blockquote>${esc(i.quote)}</blockquote>`:''}
+      ${i.note?`<h4>我的批注</h4><div class="preserve">${formatNote(i.note)}</div>`:''}
+      <form class="row ideaTagsForm" data-idea="${i.id}"><label>分类标签<input name="tags" value="${esc((i.ideaTags||[]).join('，'))}" placeholder="用逗号分隔多个标签"></label><button type="submit">保存分类</button><span class="errorText meta"></span></form>
+      </article>`).join('')||empty('没有符合当前条件的摘录或批注。');
+    for(const editor of results.querySelectorAll('.ideaTagsForm'))bind(editor,async f=>{
+      await api('/api/marks/'+f.dataset.idea,{ideaTags:formData(f).tags.split(/[,，、]/)});
+      toast('分类已保存。');await showIdeas();
+    });
+  };
+  form.addEventListener('input',draw);
+  form.addEventListener('submit',e=>e.preventDefault());
+  $('#exportIdeas').onclick=()=>{
+    const markdown=visible.map(i=>[`## ${i.title} · PDF 第 ${i.page} 页`,`分类｜${(i.ideaTags||[]).join('、')||'未分类'}`,
+      ...(i.quote?['### 原文摘录',i.quote]:[]),...(i.note?['### 我的批注',i.note]:[])].join('\n\n')).join('\n\n');
+    download(new Blob(['# 灵感摘录\n\n'+markdown+'\n'],{type:'text/markdown;charset=utf-8'}),'灵感摘录.md');
+  };
+  draw();
 }
 async function showStudies(){
   const index=await api('/api/designs');
@@ -467,13 +517,15 @@ async function openPdf(id,page=1) {
   if(!d.pdf)throw Error('该条目还没有 PDF。');
   if(gen!==pdfGeneration)return;
   $('#readerContent').innerHTML=`<header class="dialogHead"><div><h2>${esc(d.title)}</h2><div class="meta">PDF 页码</div></div>${close('reader')}</header>
-    <div class="readerTools"><button data-pdfstep="-1">上一页</button><input id="pdfNumber" aria-label="页码" type="number" min="1" max="${d.pdf_pages}" value="${page}">
-    <span class="meta">/ ${d.pdf_pages}</span><button data-pdfstep="1">下一页</button><button data-zoom="-0.2">缩小</button><button data-zoom="0.2">放大</button>
+    <div class="readerTools">${readingMode?'': '<button data-pdfstep="-1">上一页</button>'}<input id="pdfNumber" aria-label="页码" type="number" min="1" max="${d.pdf_pages}" value="${page}">
+    <span class="meta">/ ${d.pdf_pages}</span>${readingMode?'':'<button data-pdfstep="1">下一页</button>'}<button data-zoom="-0.2">缩小</button><button data-zoom="0.2">放大</button>
     <button data-downloadpdf="${id}">下载原 PDF</button></div>
     <div class="readerGrid"><div class="pdfScroll" id="pdfScroll"><p class="meta">正在加载 PDF…</p></div><aside class="readerAside">
     <h3>本页批注</h3><form class="forms" id="markForm"><p class="hint">选中正文后点击标记。也可直接记录页码批注。</p>
-    <div class="row"><button type="submit" name="高亮">高亮</button><button type="submit" name="下划线">下划线</button></div>
+    ${readingMode?'<p id="quotePreview" class="meta" aria-live="polite">选中的原文会显示在这里。</p>':''}
+    <div class="row"><button type="submit" name="高亮">${readingMode?'保存高亮与批注':'高亮'}</button><button type="submit" name="下划线">下划线</button></div>
     <label>批注内容<textarea name="note" placeholder="输入你的阅读笔记"></textarea></label>
+    ${readingMode?`<fieldset class="idea-categories"><legend>灵感分类</legend>${categories.map(c=>`<label><input type="checkbox" name="ideaTag" value="${c}">${c}</label>`).join('')}<label class="custom-tags">自定义标签<input name="customTags" placeholder="用逗号分隔"></label></fieldset>`:''}
     <div class="row"><button type="button" id="boldNote" aria-label="加粗批注文字"><strong>B</strong> 加粗</button><button class="primary" type="submit" name="批注">保存批注</button></div>
     <div class="errorText meta" role="status"></div></form><div id="marks"></div></aside></div>`;
   if(!reader.open)reader.showModal();
@@ -492,12 +544,15 @@ async function openPdf(id,page=1) {
     const selection=session.selection || {};
     const note=formData(form).note;
     if(style!=='批注'&&!selection.quote)throw Error('请先在本页选中文字。');
-    await api(`/api/docs/${id}/marks`,{page:session.page,style,note,...selection});
+    const fields=new FormData(form);
+    const ideaTags=[...fields.getAll('ideaTag'),...String(fields.get('customTags')||'').split(/[,，、]/)];
+    await api(`/api/docs/${id}/marks`,{page:session.page,style,note,...selection,ideaTags});
     if(pdfSession!==session)return;
     session.d=await api(`/api/docs/${id}`);
     session.selection=null;
     window.getSelection()?.removeAllRanges();
     form.reset();
+    if(readingMode)$('#quotePreview').textContent='选中的原文会显示在这里。';
     renderMarks(session);
   });
   try {
@@ -515,12 +570,19 @@ async function openPdf(id,page=1) {
 }
 async function setPage(p) {
   if(!pdfSession?.pdf)return;
-  pdfSession.page=Math.max(1,Math.min(pdfSession.d.pdf_pages,p||1));
-  await renderPdf(pdfSession);
+  pdfSession.page=Math.max(1,Math.min(pdfSession.d.pdf_pages,Math.trunc(p)||1));
+  if(pdfSession.jump){pdfSession.jump(pdfSession.page);renderMarks(pdfSession);}
+  else await renderPdf(pdfSession);
 }
 async function renderPdf(session) {
   const scroll=$('#pdfScroll');
   if(!scroll||pdfSession!==session)return;
+  if(readingMode){
+    session.stopContinuous?.();
+    session.selection=null;
+    $('#quotePreview').textContent='选中的原文会显示在这里。';
+    return mountContinuous(session,scroll,()=>{if(pdfSession===session)renderMarks(session);});
+  }
   const turn=++session.busy;
   session.selection=null;
   const p=await session.pdf.getPage(session.page);
@@ -549,27 +611,39 @@ async function renderPdf(session) {
 }
 function renderMarks(session) {
   const marks=session.d.marks.filter(m=>m.page===session.page);
-  const overlay=$('.pdfMarks',reader);
-  if(overlay)overlay.innerHTML=marks.filter(m=>m.style!=='批注').flatMap(m=>m.rects.map(([x,y,w,h])=>`<i class="${m.style==='下划线'?'underline':''}" style="left:${x*100}%;top:${y*100}%;width:${w*100}%;height:${h*100}%"></i>`)).join('');
+  for(const overlay of $$('.pdfMarks',reader)){
+    const page=Number(overlay.parentElement.dataset.page||session.page);
+    overlay.innerHTML=session.d.marks.filter(m=>m.page===page&&m.style!=='批注').flatMap(m=>m.rects.map(([x,y,w,h])=>`<i class="${m.style==='下划线'?'underline':''}" style="left:${x*100}%;top:${y*100}%;width:${w*100}%;height:${h*100}%"></i>`)).join('');
+  }
+  if(readingMode&&document.activeElement!==$('#pdfNumber'))$('#pdfNumber').value=session.page;
   $('#marks').innerHTML=marks.map(m=>`<article class="entry"><div class="entryline"><span class="tag">${esc(m.style)}</span><button class="quiet danger" data-delmark="${m.id}" aria-label="删除批注">删除</button></div>
-    ${m.quote?`<p class="meta">“${esc(m.quote)}”</p>`:''}${m.note?`<p class="preserve">${formatNote(m.note)}</p>`:''}</article>`).join('')||empty('本页暂无批注。');
+    ${m.quote?`<p class="meta">“${esc(m.quote)}”</p>`:''}${m.note?`<p class="preserve">${formatNote(m.note)}</p>`:''}
+    ${readingMode?chips(m.ideaTags||[]):''}</article>`).join('')||empty('本页暂无批注。');
 }
 document.addEventListener('selectionchange',()=>{
   const s=pdfSession,selection=window.getSelection();
   if(!s||!selection?.rangeCount||!selection.toString().trim())return;
-  const layer=$('.textLayer',reader);
-  if(!layer?.contains(selection.anchorNode)||!layer.contains(selection.focusNode))return;
+  const layer=selection.anchorNode?.parentElement?.closest('.textLayer');
+  if(!layer?.contains(selection.anchorNode))return;
+  if(!layer.contains(selection.focusNode)){
+    s.selection=null;
+    if(readingMode)$('#quotePreview').textContent='跨页摘录请分两次选中并保存。';
+    return;
+  }
   const page=layer.getBoundingClientRect();
   const fit=value=>Math.max(0,Math.min(1,value));
   const rects=[...selection.getRangeAt(0).getClientRects()]
     .filter(r=>r.width>0.5&&r.height>0.5)
     .map(r=>[fit((r.left-page.left)/page.width),fit((r.top-page.top)/page.height),fit(r.width/page.width),fit(r.height/page.height)]);
-  s.selection={quote:selection.toString().trim(),rects};
+  s.selection={quote:selection.toString().trim(),rects,page:Number(layer.parentElement.dataset.page||s.page)};
+  if(readingMode)$('#quotePreview').textContent='第 '+s.selection.page+' 页 · '+s.selection.quote;
 });
 reader.addEventListener('close',()=>{
   const last=pdfSession;
+  if(last){last.closed=true;last.stopContinuous?.();}
   pdfSession=null;
   pdfGeneration++;
+  if(readingMode&&state.view==='ideas')showIdeas().catch(e=>toast(e.message,true));
   if(last?.task)last.task.destroy().catch(()=>{});
   if(detail.open&&state.doc?.id===last?.d.id)openDetail(last.d.id).catch(e=>toast(e.message,true));
 });
