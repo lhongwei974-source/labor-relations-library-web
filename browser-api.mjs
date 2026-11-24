@@ -13,6 +13,7 @@ const openAsset=name=>new URL(name,import.meta.url);
 const segmenter=new Intl.Segmenter('zh',{granularity:'word'});
 const stop=new Set('the and about what how which when does have for from with why are can this that 有哪些 如何 什么 怎么 多少 可以 是否 这个 哪些 哪个'.split(' '));
 let config;
+let legacySeed;
 const scans=new Map();
 
 function httpUrl(value) {
@@ -82,24 +83,52 @@ const assets=Promise.all([idb(),...['config.json?v=summary-1','seed.json'].map(p
 }))]);
 const ready=assets.then(async ([db,settings,seed])=>{
   config=settings;
-  if(await req(db.transaction('state').objectStore('state').get('library')))return db;
-  const practice=await fetch(openAsset('practice.pdf')).then(r=>r.ok?r.blob():null).catch(()=>null);
+  legacySeed={
+    documents:seed.documents.map(d=>({...SetFields(d),segments:d.segments.map(([loc,body])=>({loc,body}))})),
+    links:seed.links,
+    practice:SetFields({title:'PDF 批注练习页',authors:'工作台示例',kind:'练习',lang:'English',basis:'合成练习材料'})
+  };
+  const stored=await req(db.transaction('state').objectStore('state').get('library'));
+  if(stored?.sampleCleanup)return db;
   await write(db,(s,files)=>{
-    if(s.docs.length)return;
-    const ids=seed.documents.map(d=>{
-      const {id}=storeDoc(s,d);
-      getDoc(s,id).segments=(d.segments||[]).map(([loc,body])=>({loc,body}));
-      return id;
-    });
-    for(const [a,b,type,note] of seed.links)s.links.push({id:next(s),a:ids[a-1],b:ids[b-1],type,note});
-    if(practice){
-      const {id}=storeDoc(s,{title:'PDF 批注练习页',authors:'工作台示例',kind:'练习',lang:'English',basis:'合成练习材料'});
-      Object.assign(getDoc(s,id),{pdf:true,pdf_pages:2,text_pages:2});
-      files.put({id,blob:practice});
-    }
+    if(s.sampleCleanup)return;
+    const removed=removeLegacySamples(s);
+    for(const id of removed)files.delete(id);
   });
   return db;
 });
+
+function removeLegacySamples(s){
+  const {documents,links,practice}=legacySeed;
+  const sampleNumbers=new Map();
+  const removed=new Set();
+  const sameFields=(doc,sample)=>[...states,'primary_tag'].every(key=>(doc[key]??'')===sample[key]);
+  // Older versions did not label seeded entries. Match their original content and keep any user work.
+  for(const doc of s.docs){
+    const index=documents.findIndex(sample=>doc.title===sample.title&&doc.url===sample.url);
+    if(index>=0)sampleNumbers.set(doc.id,index+1);
+    if(doc.review_pending||doc.designs?.length||doc.design_auto||doc.pdf_review||doc.pages?.length)continue;
+    const sample=documents[index];
+    const sameExcerpt=sample&&doc.segments?.length===sample.segments.length&&
+      sample.segments.every(({loc,body},i)=>doc.segments[i].loc===loc&&doc.segments[i].body===body);
+    const practicePdf=doc.pdf&&doc.pdf_pages===2&&doc.text_pages===2&&
+      (!doc.hash||doc.hash==='4afae75453183f4fad8ef98a2cd0fc891012b16451cc0bea9c740a1089cc692b');
+    if((!doc.pdf&&sameExcerpt&&sameFields(doc,sample))||
+      (practicePdf&&!doc.segments?.length&&sameFields(doc,practice)))removed.add(doc.id);
+  }
+  for(const mark of s.marks)removed.delete(mark.doc);
+  for(const link of s.links){
+    const builtIn=links.some(([a,b,type,note])=>
+      a===sampleNumbers.get(link.a)&&b===sampleNumbers.get(link.b)&&type===link.type&&note===link.note);
+    if(builtIn)continue;
+    removed.delete(link.a);
+    removed.delete(link.b);
+  }
+  s.docs=s.docs.filter(d=>!removed.has(d.id));
+  s.links=s.links.filter(l=>!removed.has(l.a)&&!removed.has(l.b));
+  s.sampleCleanup=true;
+  return removed;
+}
 
 function write(db,operation){
   return new Promise((ok,bad)=>{
@@ -552,11 +581,13 @@ export async function restoreBackup(file,{merge=false}={}){
     s.inbox.push({id:next(s),watch,key:clean(entry.key,2000),seen:Number(!!entry.seen),stamp:Number(entry.stamp)||0,
       item:{...item,via:clean(entry.item.via,120),excerpt:clean(entry.item.excerpt,14000),pdfUrl:httpUrl(entry.item.pdfUrl)}});
   }
+  const removed=removeLegacySamples(s);
+  const personalFiles=files.filter(file=>!removed.has(file.id));
   return mutate((existing,store)=>{
-    if(merge)return mergeLibraries(existing,store,s,files);
+    if(merge)return mergeLibraries(existing,store,s,personalFiles);
     Object.assign(existing,s);
     store.clear();
-    for(const file of files)store.put(file);
+    for(const file of personalFiles)store.put(file);
     return {added:s.docs.length,duplicates:0,marks:s.marks.length,conflicts:0};
   });
 }

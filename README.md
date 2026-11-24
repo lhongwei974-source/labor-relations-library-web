@@ -6,7 +6,7 @@ PDF 的提取和证据检索在浏览器内执行。双语发现会向公开来�
 
 ## 使用
 
-打开 [劳动关系知识库](https://lhongwei974-source.github.io/labor-relations-library-web/)。选择「导入 PDF」即可开始，网页中的初始资料和批注练习 PDF 均为示例。
+打开 [劳动关系知识库](https://lhongwei974-source.github.io/labor-relations-library-web/)。选择「导入 PDF」即可开始，文献库仅展示已添加的资料，研究专题会在相关文献归档后显示。
 
 ## 研究设计对照
 

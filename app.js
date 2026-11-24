@@ -1,4 +1,4 @@
-import {api,checkWatches,entryMarkdown,getPdf,exportBackup,restoreBackup} from './browser-api.mjs?v=reading-1';
+import {api,checkWatches,entryMarkdown,getPdf,exportBackup,restoreBackup} from './browser-api.mjs?v=library-1';
 import {designSummary,mountComparison,mountDesignEditor} from './research-ui.mjs';
 import {mountContinuous} from './continuous-pdf.mjs';
 import {categories} from './inspiration.mjs';
@@ -169,10 +169,25 @@ async function openStudy(id){
   });
 }
 let searchGeneration=0;
+function groupByTopic(docs){
+  const groups=new Map(state.topics.map(({name})=>[name,[]]));
+  for(const doc of docs){
+    if(doc.review_pending||doc.kind==='练习')continue;
+    for(const tag of tags(doc)){
+      if(!groups.has(tag))groups.set(tag,[]);
+      groups.get(tag).push(doc);
+    }
+  }
+  return [...groups].filter(([,entries])=>entries.length);
+}
 function showLibrary() {
   const pending=state.docs.filter(d=>d.review_pending).length;
   const confirmed=state.docs.filter(d=>!d.review_pending&&d.kind!=='练习');
-  const topics=[...new Set([...state.topics.map(t=>t.name),...confirmed.flatMap(tags)])];
+  const topics=groupByTopic(confirmed);
+  if(state.tag&&!topics.some(([tag])=>tag===state.tag)){
+    state.tag='';
+    state.primaryOnly=false;
+  }
   const active=state.tag || ({pending:'待核对',unfiled:'未归类'})[state.zone] || '全部资料';
   const section=(key,title,count,selected)=>`<button class="topicLine${selected?' selected':''}" ${key} ${selected?'aria-current="true"':''}>${esc(title)}<span>${count} 条</span></button>`;
   view.innerHTML=heading('文献库','导入 PDF，核对提取结果，再按专题归档。',
@@ -191,9 +206,8 @@ function showLibrary() {
           ${section('data-zone="pending"','待核对',pending,state.zone==='pending')}
           ${section('data-zone="unfiled"','未归类',confirmed.filter(d=>!d.primary_tag).length,state.zone==='unfiled')}
         </section>
-        <section class="panel"><h2>研究专题</h2>${topics.map(t=>section(`data-tag="${esc(t)}"`,t,confirmed.filter(d=>tags(d).includes(t)).length,state.tag===t)).join('')}</section>
-        <section class="panel"><h2>从 PDF 回到证据</h2><p class="meta">选中文字后可高亮、下划线或写批注。批注随页码保存，并能在库内检索。</p>
-        ${state.docs.find(d=>d.kind==='练习')?`<button data-pdf="${state.docs.find(d=>d.kind==='练习').id}">打开练习 PDF</button>`:''}</section>
+        ${topics.length?`<section class="panel"><h2>研究专题</h2>${topics.map(([tag,docs])=>section(`data-tag="${esc(tag)}"`,tag,docs.length,state.tag===tag)).join('')}</section>`:''}
+        <section class="panel"><h2>从 PDF 回到证据</h2><p class="meta">选中文字后可高亮、下划线或写批注。批注随页码保存，并能在库内检索。</p></section>
       </aside></div>`;
   let debounce;
   $('#q').addEventListener('input',e=>{
@@ -210,7 +224,7 @@ async function fetchDocs(){
   const docs=await api('/api/docs?'+new URLSearchParams({q:state.q,kind:state.kind,tag:state.tag,zone:state.zone,primary:state.primaryOnly?'1':'0'}));
   if(state.view!=='library'||generation!==searchGeneration)return;
   $('#docCount').textContent=docs.length+' 条资料';
-  $('#entries').innerHTML=docs.map(compactEntry).join('') || empty('当前条件下没有找到资料。');
+  $('#entries').innerHTML=docs.map(compactEntry).join('') || empty(state.docs.length?'当前条件下没有找到资料。':'文献库还是空的。点击「导入 PDF」添加你的文献。');
 }
 const statusHtml = sources => `<div class="sourceStatus">${sources.map(s=>`<span class="${s.ok?'':'failed'}">${esc(s.name)} · ${s.ok?esc(s.detail):'暂时不可用'}</span>`).join('')}</div>`;
 
@@ -292,7 +306,7 @@ async function showMap() {
   const {docs,links}=await api('/api/map');
   if(state.view!=='map')return;
   const title=id=>docs.find(d=>d.id===id)?.title;
-  const groups=[...new Set([...state.topics.map(t=>t.name),...docs.flatMap(tags)])].map(tag=>({tag,docs:docs.filter(d=>tags(d).includes(tag))}));
+  const groups=groupByTopic(docs);
   const linked=new Set(links.map(l=>[Math.min(l.a,l.b),Math.max(l.a,l.b)].join('|')));
   const suggested=[];
   for(const [i,a] of docs.entries()){
@@ -312,9 +326,9 @@ async function showMap() {
   $('#mapping').innerHTML=`<div class="stack"><section class="panel"><div class="panelhead"><div><h2>关系图</h2><p class="meta">选择一条文献，查看已有的研究关系。</p></div><label>中心文献<select id="mapAnchor">${selectable.map(d=>`<option value="${d.id}"${anchor?.id===d.id?' selected':''}>${esc(d.title)}</option>`).join('')}</select></label></div>
   ${anchor?`<div class="mapFocus"><button class="mapCenter primary" data-doc="${anchor.id}">${esc(anchor.title)}</button>
     <div class="mapBranches">${neighbours.length?neighbours.map(l=>{const other=l.a===anchor.id?l.b:l.a;return `<div><span>${esc(l.type)}</span><button data-doc="${other}">${esc(title(other))}</button></div>`;}).join(''):empty('此文献暂无已确认的关系。')}</div></div>`:empty('收入资料后即可建立关系图。')}</section>
-  <section class="panel"><h2>按主题浏览</h2><div class="mapgrid">
-    ${groups.map(g=>`<section class="mapcard"><h3>${esc(g.tag)}</h3><div class="meta">${g.docs.length} 条资料</div>${g.docs.slice(0,3).map(d=>`<button data-doc="${d.id}">${esc(d.title)}</button>`).join('')}
-    ${g.docs.length>3?`<button class="quiet" data-tag="${esc(g.tag)}">查看全部</button>`:''}</section>`).join('')}</div></section>
+  ${groups.length?`<section class="panel"><h2>按主题浏览</h2><div class="mapgrid">
+    ${groups.map(([tag,entries])=>`<section class="mapcard"><h3>${esc(tag)}</h3><div class="meta">${entries.length} 条资料</div>${entries.slice(0,3).map(d=>`<button data-doc="${d.id}">${esc(d.title)}</button>`).join('')}
+    ${entries.length>3?`<button class="quiet" data-tag="${esc(tag)}">查看全部</button>`:''}</section>`).join('')}</div></section>`:''}
     <div class="columns"><section class="panel"><h2>已确认的关系</h2>
     ${links.map(l=>`<article class="suggestion"><div class="row">${label(l.type)}<button data-doc="${l.a}">${esc(title(l.a))}</button><button data-doc="${l.b}">${esc(title(l.b))}</button></div><p class="meta">${esc(l.note)}</p></article>`).join('')||empty('打开文献详情，为两篇文献添加关系。')}</section>
     <aside class="panel"><h2>可检查的关联</h2>
